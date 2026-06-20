@@ -1,0 +1,4 @@
+import { NextResponse } from 'next/server';
+export async function POST() {
+  return NextResponse.json({ message: 'Init not needed, DB schema already exists' });
+}

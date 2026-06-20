@@ -1,0 +1,111 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getConnection } from '@/lib/db';
+import { verifyToken } from '@/lib/auth';
+import { getUserFromRequest } from '@/lib/auth';
+
+export async function GET(request: NextRequest) {
+  try {
+    const user = await getUserFromRequest(request);
+    if (!user) return NextResponse.json({ success: false, error: '未登录' }, { status: 401 });
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    const conn = await getConnection();
+    if (id) {
+      const [rows]: any = await conn.execute('SELECT * FROM hazards WHERE id = ?', [id]);
+      await conn.end();
+      if (rows.length === 0) return NextResponse.json({ success: false, error: '未找到' }, { status: 404 });
+      return NextResponse.json({ success: true, data: rows[0] });
+    }
+
+    // 列表查询
+    const page = parseInt(searchParams.get('page') || '1');
+    const pageSize = parseInt(searchParams.get('pageSize') || '10');
+    const offset = (page - 1) * pageSize;
+
+    let where = '1=1';
+    const params: any[] = [];
+
+    const dept = searchParams.get('inspectionDepartment');
+    if (dept && dept !== 'all') { where += ' AND inspection_department = ?'; params.push(dept); }
+
+    const team = searchParams.get('inspectionTeam');
+    if (team && team !== 'all') { where += ' AND inspection_team = ?'; params.push(team); }
+
+    const person = searchParams.get('inspectorName');
+    if (person && person !== 'all') { where += ' AND (inspector_name = ? OR inspector = ?)'; params.push(person, person); }
+
+    const startDate = searchParams.get('startDate');
+    if (startDate) { where += ' AND inspection_date >= ?'; params.push(startDate); }
+
+    const endDate = searchParams.get('endDate');
+    if (endDate) { where += ' AND inspection_date <= ?'; params.push(endDate); }
+
+    const status = searchParams.get('status');
+    if (status) { where += ' AND status = ?'; params.push(status); }
+
+    const level = searchParams.get('hazardLevel');
+    if (level) { where += ' AND hazard_level = ?'; params.push(level); }
+
+    const keyword = searchParams.get('keyword');
+    if (keyword) { where += ' AND (inspection_location LIKE ? OR hazard_description LIKE ?)'; params.push(`%${keyword}%`, `%${keyword}%`); }
+
+    const [countRows]: any = await conn.execute(`SELECT COUNT(*) as total FROM hazards WHERE ${where}`, params);
+    const total = countRows[0].total;
+
+    const [rows]: any = await conn.execute(
+      `SELECT * FROM hazards WHERE ${where} ORDER BY created_at DESC LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`,
+      params
+    );
+
+    await conn.end();
+    return NextResponse.json({
+      success: true,
+      data: {
+        items: rows,
+        page, pageSize, total,
+        totalPages: Math.ceil(total / pageSize)
+      }
+    });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const user = await getUserFromRequest(request);
+    if (!user) return NextResponse.json({ success: false, error: '未登录' }, { status: 401 });
+
+    const body = await request.json();
+    const conn = await getConnection();
+    const id = `hazard-${Date.now()}`;
+
+    await conn.execute(`
+      INSERT INTO hazards (
+        id, inspection_date, inspection_location, line,
+        inspection_center, inspection_department, inspection_team, inspection_position,
+        inspector, inspector_name, inspector_id,
+        hazard_description, hazard_category, hazard_level,
+        temporary_measures, governance_department, cooperating_department,
+        governance_person, governance_measure, governance_deadline,
+        status, images, created_by
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      id,
+      body.inspection_date, body.inspection_location, body.line || '',
+      user.inspection_center || '', user.inspection_department || '', user.inspection_team || '', user.inspection_position || '',
+      user.name, user.name, user.id,
+      body.hazard_description, body.hazard_category || '', body.hazard_level || 'general_i',
+      body.temporary_measures || '', body.governance_department || '', body.cooperating_department || '',
+      body.governance_person || '', body.governance_measure || '', body.governance_deadline || '',
+      body.status || 'draft', body.images ? JSON.stringify(body.images) : null, user.id
+    ]);
+
+    await conn.end();
+    return NextResponse.json({ success: true, data: { id, ...body } });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}

@@ -1,0 +1,38 @@
+# Next.js build output
+.next/
+out/
+
+# Dependencies
+node_modules/
+
+# Environment variables (contains secrets)
+.env.local
+.env*.local
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# IDE
+.idea/
+.vscode/
+*.sublime-*
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Uploads (user-uploaded files)
+public/uploads/*
+
+# Temporary files
+*.tmp
+*.bak
+fix-credentials.js
+
+# TypeScript build info
+*.tsbuildinfo
+next-env.d.ts
