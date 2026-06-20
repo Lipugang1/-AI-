@@ -207,10 +207,10 @@ export default function NewHazardPage() {
 
       {/* 主内容区 - 左右两栏布局（仿原系统） */}
       <div className="p-5 max-w-[1400px] mx-auto">
-        <div className="flex gap-5">
+        <div className="flex flex-col lg:flex-row gap-5">
 
           {/* ====== 左栏：图片上传 + AI识别 + 结果复核 ====== */}
-          <div className="w-[380px] flex-shrink-0 space-y-4">
+          <div className="w-full lg:w-[380px] lg:flex-shrink-0 space-y-4">
 
             {/* 上传隐患图片 */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">

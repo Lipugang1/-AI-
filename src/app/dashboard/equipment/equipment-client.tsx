@@ -73,6 +73,7 @@ export function EquipmentClient() {
   const [equipments, setEquipments] = useState<EquipmentWithRecords[]>([]);
   const [inspectionRecords, setInspectionRecords] = useState<InspectionRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<any>(null);
   const [currentView, setCurrentView] = useState<"list" | "inspection" | "records" | "addEquipment" | "editEquipment" | "editRecord">("list");
   
   // Tab切换状态
@@ -98,6 +99,11 @@ export function EquipmentClient() {
   const [monthlyPhotoPreviews, setMonthlyPhotoPreviews] = useState<string[]>([]);
   const [monthlyAiResult, setMonthlyAiResult] = useState<string>("");
   const [monthlyAiLoading, setMonthlyAiLoading] = useState(false);
+
+  // 创建班组状态
+  const [showCreateTeam, setShowCreateTeam] = useState(false);
+  const [newTeamName, setNewTeamName] = useState("");
+  const [newTeamDescription, setNewTeamDescription] = useState("");
 
   // 区域管理状态
   const [showAreaManager, setShowAreaManager] = useState(false);
@@ -233,6 +239,21 @@ export function EquipmentClient() {
     }
   }, [selectedWarehouse]);
 
+  // 获取当前用户信息
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const res = await fetch("/api/auth/me", { credentials: 'include' });
+        const data = await res.json();
+        if (data.user) setUser(data.user);
+        else if (data.id) setUser(data);
+      } catch (e) {
+        console.error("获取用户信息失败:", e);
+      }
+    };
+    fetchUser();
+  }, []);
+
   const initializeData = async () => {
     try {
       // 先初始化物资库数据
@@ -263,6 +284,37 @@ export function EquipmentClient() {
       setWarehouseCounts(counts);
     } catch (e) {
       console.error("加载仓库统计失败:", e);
+    }
+  };
+
+  const handleCreateTeam = async () => {
+    if (!newTeamName.trim()) {
+      alert("请输入班组名称");
+      return;
+    }
+    try {
+      const res = await fetch("/api/teams", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: 'include',
+        body: JSON.stringify({
+          name: newTeamName.trim(),
+          description: newTeamDescription.trim(),
+          departmentId: user?.department_id,
+        }),
+      });
+      const data = await res.json();
+      if (data.success || data.id) {
+        setShowCreateTeam(false);
+        setNewTeamName("");
+        setNewTeamDescription("");
+        await loadTeams();
+      } else {
+        alert(data.error || "创建班组失败");
+      }
+    } catch (e) {
+      console.error("创建班组失败:", e);
+      alert("创建班组失败");
     }
   };
 
@@ -1617,6 +1669,22 @@ export function EquipmentClient() {
                 </button>
               ))}
             </div>
+
+            {/* 创建班组 */}
+            {user && user.department_id !== 'dept-003' && teams.length === 0 && (
+              <div className="mt-8 pt-8 border-t border-gray-200 text-center">
+                <p className="text-gray-500 mb-4">暂无班组，请创建您的第一个班组</p>
+                <button
+                  onClick={() => setShowCreateTeam(true)}
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 shadow-lg transition-all"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  创建班组
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -4585,6 +4653,62 @@ export function EquipmentClient() {
                     取消
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 创建班组弹窗 */}
+        {showCreateTeam && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full mx-4">
+              <h2 className="text-xl font-bold text-gray-900 mb-6">创建班组</h2>
+              
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    班组名称 <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newTeamName}
+                    onChange={(e) => setNewTeamName(e.target.value)}
+                    placeholder="请输入班组名称"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    班组描述
+                  </label>
+                  <textarea
+                    value={newTeamDescription}
+                    onChange={(e) => setNewTeamDescription(e.target.value)}
+                    placeholder="请输入班组描述（选填）"
+                    rows={3}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 resize-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={handleCreateTeam}
+                  disabled={!newTeamName.trim()}
+                  className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                >
+                  确认创建
+                </button>
+                <button
+                  onClick={() => {
+                    setShowCreateTeam(false);
+                    setNewTeamName("");
+                    setNewTeamDescription("");
+                  }}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  取消
+                </button>
               </div>
             </div>
           </div>

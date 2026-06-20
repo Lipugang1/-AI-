@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { getUserFromRequest, isAdmin } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,6 +13,13 @@ export async function GET(request: NextRequest) {
     const period = searchParams.get('period') || 'all';
     const startDateStr = searchParams.get('startDate');
     const endDateStr = searchParams.get('endDate');
+
+    // 获取用户部门名称（用于权限过滤）
+    let userDeptName = '';
+    if (!isAdmin(user) && user.department_id) {
+      const deptRows = await query('SELECT name FROM departments WHERE id = ?', [user.department_id]) as any[];
+      if (deptRows.length > 0) userDeptName = deptRows[0].name;
+    }
 
     // 加载所有原始数据
     const allHazards = await query('SELECT * FROM hazards ORDER BY created_at DESC') as any[];
@@ -48,6 +56,10 @@ export async function GET(request: NextRequest) {
 
     // ==================== 隐患数据分析 ====================
     let hazards = allHazards;
+    // 部门权限过滤
+    if (userDeptName) {
+      hazards = hazards.filter((h: any) => h.inspection_department === userDeptName);
+    }
     if (startDateStr && endDateStr) {
       const start = new Date(startDateStr);
       const end = new Date(endDateStr);
@@ -125,6 +137,10 @@ export async function GET(request: NextRequest) {
 
     // ==================== 器材巡查统计 ====================
     let inspections = allInspections;
+    // 部门权限过滤：只显示用户所在部门管辖仓库的巡查记录
+    if (userDeptName) {
+      inspections = inspections.filter((ir: any) => ir.warehouse_name === userDeptName);
+    }
     if (startDateStr && endDateStr) {
       const start = new Date(startDateStr);
       const end = new Date(endDateStr);
@@ -297,23 +313,5 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error('[Analytics] Error:', error);
     return NextResponse.json({ success: false, error: '获取分析数据失败' }, { status: 500 });
-  }
-}
-
-async function getUserFromRequest(request: NextRequest): Promise<any | null> {
-  try {
-    const token = request.cookies.get('auth_token')?.value;
-    if (!token) return null;
-    const jwt = require('jsonwebtoken');
-    const payload = jwt.verify(token, process.env.JWT_SECRET || 'sanheyi_super_secret_key_2024_!@#$%^&*()');
-    const conn = await (await import('@/lib/db')).getConnection();
-    const [rows]: any = await conn.execute(
-      'SELECT id, username, name, role FROM users WHERE id = ? AND is_active = 1',
-      [payload.id]
-    );
-    await conn.end();
-    return rows[0] || null;
-  } catch {
-    return null;
   }
 }

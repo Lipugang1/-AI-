@@ -38,6 +38,7 @@ import { TrainingContentManager } from '@/components/TrainingContentManager';
 import { TrainingContentViewer } from '@/components/TrainingContentViewer';
 import { DepartmentSelector } from '@/components/DepartmentSelector';
 import { DepartmentManager } from '@/components/DepartmentManager';
+import { useAuth } from '@/hooks/use-auth';
 import * as XLSX from 'xlsx';
 
 interface Department {
@@ -108,6 +109,8 @@ const ATTENDANCE_STATUS = {
 };
 
 export function MeetingsClient() {
+  const { user } = useAuth();
+
   // 部门相关
   const [currentDepartment, setCurrentDepartment] = useState<Department | null>(null);
   const [showDepartmentManager, setShowDepartmentManager] = useState(false);
@@ -1332,7 +1335,11 @@ export function MeetingsClient() {
   // 如果没有选择部门，显示部门选择器
   if (!currentDepartment) {
     return (
-      <DepartmentSelector onSelect={handleDepartmentSelect} />
+      <DepartmentSelector 
+        onSelect={handleDepartmentSelect}
+        userDepartmentId={user?.department_id}
+        userRole={user?.role}
+      />
     );
   }
 

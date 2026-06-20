@@ -87,7 +87,12 @@ const systemItems = [
   },
 ];
 
-export function DashboardSidebar({ user }: { user: User }) {
+interface DashboardSidebarProps {
+  user: User;
+  onNavigate?: () => void;
+}
+
+export function DashboardSidebar({ user, onNavigate }: DashboardSidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
 
@@ -97,10 +102,14 @@ export function DashboardSidebar({ user }: { user: User }) {
     router.refresh();
   };
 
+  const handleNavigate = () => {
+    onNavigate?.();
+  };
+
   const isActive = (href: string) => pathname === href || pathname?.startsWith(href + '/');
 
   return (
-    <div className="flex h-full w-64 flex-col bg-gray-900/95 backdrop-blur-sm border-r border-gray-800/50">
+    <div className="flex h-full w-64 flex-col bg-gray-900/95 backdrop-blur-sm border-r border-gray-800/50 shadow-2xl lg:shadow-none">
       {/* Header */}
       <div className="flex h-16 items-center justify-between border-b border-gray-800/50 px-5">
         <div className="flex items-center gap-2.5">
@@ -126,6 +135,7 @@ export function DashboardSidebar({ user }: { user: User }) {
                   ? 'bg-blue-600/15 text-blue-400 shadow-sm'
                   : 'text-gray-400 hover:bg-gray-800/60 hover:text-white'
               }`}
+              onClick={() => handleNavigate()}
             >
               {item.icon}
               {item.label}
@@ -144,6 +154,7 @@ export function DashboardSidebar({ user }: { user: User }) {
             <a
               key={item.href}
               href={item.href}
+              onClick={() => handleNavigate()}
               className={`group flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200 ${
                 active
                   ? `${item.bgColor} ${item.textColor} border border-current/20`
@@ -167,6 +178,7 @@ export function DashboardSidebar({ user }: { user: User }) {
             <a
               key={item.href}
               href={item.href}
+              onClick={() => handleNavigate()}
               className={`group flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200 ${
                 active
                   ? `${item.bgColor} ${item.textColor} border border-current/20`

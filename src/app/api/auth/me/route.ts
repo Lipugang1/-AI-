@@ -18,7 +18,7 @@ export async function GET() {
     }
 
     const users = await query(
-      'SELECT id, username, name, role, inspection_center, inspection_department, inspection_team, inspection_position FROM users WHERE id = ? AND is_active = 1',
+      'SELECT id, username, name, role, department_id, team_id, inspection_center, inspection_department, inspection_team, inspection_position FROM users WHERE id = ? AND is_active = 1',
       [user.id]
     ) as any[];
 

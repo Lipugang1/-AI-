@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from '@/lib/db';
-import { verifyToken } from '@/lib/auth';
-import { getUserFromRequest } from '@/lib/auth';
+import { getUserFromRequest, isAdmin } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,13 +21,22 @@ export async function GET(request: NextRequest) {
     // 列表查询
     const page = parseInt(searchParams.get('page') || '1');
     const pageSize = parseInt(searchParams.get('pageSize') || '10');
-    const offset = (page - 1) * pageSize;
 
     let where = '1=1';
     const params: any[] = [];
 
+    // 部门数据权限：非管理员只能看自己部门的数据
+    if (!isAdmin(user) && user.department_id) {
+      // 获取用户的部门名称
+      const [deptRows]: any = await conn.execute('SELECT name FROM departments WHERE id = ?', [user.department_id]);
+      if (deptRows.length > 0) {
+        where += ' AND inspection_department = ?';
+        params.push(deptRows[0].name);
+      }
+    }
+
     const dept = searchParams.get('inspectionDepartment');
-    if (dept && dept !== 'all') { where += ' AND inspection_department = ?'; params.push(dept); }
+    if (dept && dept !== 'all' && isAdmin(user)) { where += ' AND inspection_department = ?'; params.push(dept); }
 
     const team = searchParams.get('inspectionTeam');
     if (team && team !== 'all') { where += ' AND inspection_team = ?'; params.push(team); }

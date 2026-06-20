@@ -40,6 +40,8 @@ export async function POST(request: NextRequest) {
       username: user.username,
       name: user.name,
       role: user.role,
+      department_id: user.department_id,
+      team_id: user.team_id,
       inspection_center: user.inspection_center,
       inspection_department: user.inspection_department,
       inspection_team: user.inspection_team,
@@ -52,6 +54,8 @@ export async function POST(request: NextRequest) {
         username: user.username,
         name: user.name,
         role: user.role,
+        department_id: user.department_id,
+        team_id: user.team_id,
       },
     });
     

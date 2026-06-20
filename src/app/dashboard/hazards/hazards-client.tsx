@@ -524,7 +524,7 @@ function ListContent({ user }: { user: any }) {
           </FilterField>
         </div>
         {/* 第二行：处理状态 + 关键词搜索 */}
-        <div className="flex items-end gap-x-4 gap-y-3">
+        <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
           <FilterField label="处理状态">
             <select className="w-full min-w-[140px] border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 outline-none" value={filters.status}
               onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}>

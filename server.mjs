@@ -1,7 +1,6 @@
 import { createServer } from 'http';
-import { parse } from 'url';
 import next from 'next';
-import { WebSocketServer, WebSocket } from 'ws';
+import { WebSocketServer } from 'ws';
 
 const dev = false;
 const hostname = '0.0.0.0';

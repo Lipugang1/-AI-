@@ -7,6 +7,8 @@ interface User {
   username: string;
   name: string;
   role: string;
+  department_id?: string;
+  team_id?: string;
   inspection_center?: string;
   inspection_department?: string;
   inspection_team?: string;
