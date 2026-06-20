@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 import { verifyToken } from '@/lib/auth';
-import { DashboardSidebar } from '@/components/dashboard-sidebar';
+import { DashboardLayoutClient } from '@/components/dashboard-layout-client';
 
 export default async function DashboardLayout({
   children,
@@ -21,11 +21,8 @@ export default async function DashboardLayout({
   }
   
   return (
-    <div className="flex h-screen bg-gray-100">
-      <DashboardSidebar user={user} />
-      <main className="flex-1 overflow-y-auto p-8">
-        {children}
-      </main>
-    </div>
+    <DashboardLayoutClient user={user}>
+      {children}
+    </DashboardLayoutClient>
   );
 }
