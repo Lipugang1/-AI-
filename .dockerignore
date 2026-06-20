@@ -1,0 +1,11 @@
+node_modules
+.next
+.git
+.env.local
+.env
+*.md
+!AGENTS.md
+.DS_Store
+public/uploads/*
+mobile-screenshots
+.playwright-cli
