@@ -19,18 +19,18 @@ export default function NewHazardPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiSuggestionLoading, setAiSuggestionLoading] = useState(false);
   const [images, setImages] = useState<{ name: string; url: string }[]>([]);
   const [uploading, setUploading] = useState(false);
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
 
-  // AI识别结果（左侧复核区）
   const [aiResult, setAiResult] = useState('');
   const [aiLocation, setAiLocation] = useState('');
   const [aiLevel, setAiLevel] = useState('general_ii');
 
-  // 表单数据 - 默认用用户信息填充
   const [form, setForm] = useState({
     inspection_date: new Date().toISOString().slice(0, 10),
+    line: '',
     inspection_center: '',
     inspection_department: '',
     inspection_team: '',
@@ -48,7 +48,6 @@ export default function NewHazardPage() {
     status: 'draft'
   });
 
-  // 获取当前用户信息，自动填充表单
   useEffect(() => {
     fetch('/api/auth/me', { credentials: 'include' })
       .then(res => res.json())
@@ -68,7 +67,6 @@ export default function NewHazardPage() {
       .catch(() => {});
   }, []);
 
-  // 图片上传
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -91,12 +89,10 @@ export default function NewHazardPage() {
     }
   };
 
-  // 删除图片
   const removeImage = (index: number) => {
     setImages(prev => prev.filter((_, i) => i !== index));
   };
 
-  // AI 识别图片
   const handleAIAnalyze = async () => {
     if (images.length === 0) { alert('请先上传隐患图片'); return; }
     setAiLoading(true);
@@ -123,7 +119,6 @@ export default function NewHazardPage() {
     }
   };
 
-  // 确认填入AI结果
   const confirmAIResult = () => {
     if (!aiResult) return;
     setForm(f => ({
@@ -135,16 +130,14 @@ export default function NewHazardPage() {
     alert('已将AI识别结果填入表单，请检查确认后提交。');
   };
 
-  // 取消AI结果
   const cancelAIResult = () => {
     setAiResult('');
     setAiLocation('');
   };
 
-  // AI 生成治理措施
   const handleAISuggestion = async () => {
     if (!form.hazard_description) { alert('请先填写隐患描述'); return; }
-    setAiLoading(true);
+    setAiSuggestionLoading(true);
     try {
       const res = await fetch('/api/ai/governance-suggestion', {
         method: 'POST',
@@ -165,12 +158,27 @@ export default function NewHazardPage() {
     } catch (e: any) {
       alert('AI建议失败：' + e.message);
     } finally {
-      setAiLoading(false);
+      setAiSuggestionLoading(false);
     }
   };
 
-  // 提交
   const handleSubmit = async (status: string) => {
+    const requiredFields: { key: string; label: string }[] = [
+      { key: 'inspection_date', label: '排查日期' },
+      { key: 'inspection_location', label: '排查地点' },
+      { key: 'hazard_description', label: '隐患描述' },
+      { key: 'hazard_category', label: '隐患分类' },
+      { key: 'temporary_measures', label: '临时管控措施' },
+      { key: 'governance_department', label: '治理责任部门' },
+      { key: 'governance_person', label: '治理责任人' },
+      { key: 'governance_deadline', label: '治理时限' },
+      { key: 'governance_measure', label: '治理措施' },
+    ];
+    const missing = requiredFields.filter(f => !(form as any)[f.key]?.toString().trim());
+    if (missing.length > 0) {
+      alert(`请填写以下必填项：${missing.map(m => m.label).join('、')}`);
+      return;
+    }
     setSaving(true);
     try {
       const payload = { ...form, status, images: images.map(i => i.url) };
@@ -196,7 +204,6 @@ export default function NewHazardPage() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* 顶部标题栏 */}
       <div className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
         <h1 className="text-lg font-bold text-gray-800">上报隐患</h1>
         <button onClick={() => router.push('/dashboard/hazards')}
@@ -205,14 +212,11 @@ export default function NewHazardPage() {
         </button>
       </div>
 
-      {/* 主内容区 - 左右两栏布局（仿原系统） */}
       <div className="p-5 max-w-[1400px] mx-auto">
         <div className="flex flex-col lg:flex-row gap-5">
 
-          {/* ====== 左栏：图片上传 + AI识别 + 结果复核 ====== */}
           <div className="w-full lg:w-[380px] lg:flex-shrink-0 space-y-4">
 
-            {/* 上传隐患图片 */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
               <div className="flex items-center gap-2 mb-3">
                 <svg className="h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -221,7 +225,6 @@ export default function NewHazardPage() {
                 <span className="text-sm font-semibold text-gray-700">上传隐患图片</span>
               </div>
 
-              {/* 图片预览区 */}
               <div
                 onClick={() => fileInputRef.current?.click()}
                 className={`w-full aspect-[4/3] rounded-lg border-2 border-dashed ${images.length > 0 ? 'border-solid border-gray-300' : 'border-gray-300 hover:border-blue-400'} cursor-pointer overflow-hidden bg-gray-50 flex items-center justify-center relative`}
@@ -249,7 +252,6 @@ export default function NewHazardPage() {
               </div>
               <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={uploading} />
 
-              {/* 添加更多图片 */}
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
@@ -258,7 +260,6 @@ export default function NewHazardPage() {
                 添加更多图片
               </button>
 
-              {/* AI分析按钮 */}
               <button
                 type="button"
                 onClick={handleAIAnalyze}
@@ -282,7 +283,6 @@ export default function NewHazardPage() {
               <p className="text-xs text-gray-400 text-center mt-2">上传图片后点击分析，AI将识别隐患并生成描述</p>
             </div>
 
-            {/* AI识别结果复核 */}
             {aiResult && (
               <div className="bg-amber-50 rounded-lg border border-amber-200 p-4">
                 <div className="flex items-start gap-2 mb-3">
@@ -291,14 +291,12 @@ export default function NewHazardPage() {
                   </svg>
                   <div>
                     <h3 className="text-sm font-semibold text-amber-700">AI识别结果复核</h3>
-                    <p className="text-xs text-amber-600 mt-0.5">请核对AI识别结果，确认无误后点击&quot;确认填入&quot;，也可修改后再确认</p>
+                    <p className="text-xs text-amber-600 mt-0.5">请核对AI识别结果，确认无误后点击"确认填入"，也可修改后再确认</p>
                   </div>
                 </div>
 
-                {/* 隐患详情标签 */}
                 <span className="inline-block text-xs bg-amber-200/70 text-amber-800 px-2 py-0.5 rounded mb-2">隐患情况</span>
 
-                {/* AI结果文本（可编辑） */}
                 <textarea
                   value={aiResult}
                   onChange={e => setAiResult(e.target.value)}
@@ -306,7 +304,6 @@ export default function NewHazardPage() {
                   className="w-full bg-white/80 border border-amber-200 rounded px-3 py-2 text-sm leading-relaxed resize-y focus:outline-none focus:ring-2 focus:ring-amber-400/30 mb-3"
                 />
 
-                {/* 置信度 + 隐患等级 */}
                 <div className="grid grid-cols-2 gap-3 mb-3">
                   <div>
                     <label className="block text-xs text-amber-700 font-medium mb-1">识别置信度</label>
@@ -327,7 +324,6 @@ export default function NewHazardPage() {
                   </div>
                 </div>
 
-                {/* 操作按钮 */}
                 <div className="flex gap-2">
                   <button type="button" onClick={confirmAIResult}
                     className="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-2 rounded text-sm font-medium transition-colors">
@@ -343,36 +339,32 @@ export default function NewHazardPage() {
 
           </div>
 
-          {/* ====== 右栏：表单信息 ====== */}
           <div className="flex-1 min-w-0 space-y-4">
 
-            {/* 隐患信息 */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
               <h2 className="text-base font-bold text-gray-800 mb-4 pb-2 border-b border-gray-100">隐患信息</h2>
 
-              {/* 用户信息（自动填充，只读展示） */}
               <div className="grid grid-cols-2 gap-x-6 gap-y-2 mb-4 p-3 bg-gray-50 rounded-lg">
                 <div className="flex text-sm">
-                  <span className="text-gray-500 w-18 flex-shrink-0">排查中心</span>
+                  <span className="text-gray-500 w-[72px] flex-shrink-0">排查中心</span>
                   <span className="text-gray-800 font-medium">{form.inspection_center || '-'}</span>
                 </div>
                 <div className="flex text-sm">
-                  <span className="text-gray-500 w-18 flex-shrink-0">排查部门</span>
+                  <span className="text-gray-500 w-[72px] flex-shrink-0">排查部门</span>
                   <span className="text-gray-800 font-medium">{form.inspection_department || '-'}</span>
                 </div>
                 <div className="flex text-sm">
-                  <span className="text-gray-500 w-18 flex-shrink-0">排查班组</span>
+                  <span className="text-gray-500 w-[72px] flex-shrink-0">排查班组</span>
                   <span className="text-gray-800 font-medium">{form.inspection_team || '-'}</span>
                 </div>
                 <div className="flex text-sm">
-                  <span className="text-gray-500 w-18 flex-shrink-0">排查岗位</span>
+                  <span className="text-gray-500 w-[72px] flex-shrink-0">排查岗位</span>
                   <span className="text-gray-800 font-medium">{form.inspection_position || '-'}</span>
                 </div>
               </div>
 
               <div className="space-y-3">
-                {/* 排查日期 / 排查地点 */}
-                <div className="grid grid-cols-2 gap-x-5 gap-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-3">
                   <FormItem label="排查日期" required labelWidth="72px">
                     <input type="date" className="form-input" value={form.inspection_date}
                       onChange={e => setForm(f => ({ ...f, inspection_date: e.target.value }))} />
@@ -384,9 +376,9 @@ export default function NewHazardPage() {
                   </FormItem>
                 </div>
 
-                {/* 所属线别 */}
                 <FormItem label="所属线别" labelWidth="72px">
-                  <select className="form-select" value={'' /* 原系统用单独字段 */}>
+                  <select className="form-select" value={form.line}
+                    onChange={e => setForm(f => ({ ...f, line: e.target.value }))}>
                     <option value="">请选择线别</option>
                     <option>1号线</option><option>2号线</option><option>3号线</option>
                     <option>4号线</option><option>6号线</option><option>8号线</option>
@@ -394,28 +386,30 @@ export default function NewHazardPage() {
                   </select>
                 </FormItem>
 
-                {/* 隐患描述 + 隐患分类/等级 */}
                 <FormItem label="隐患描述" required labelWidth="72px">
                   <textarea rows={3} className="form-input resize-y" placeholder="AI分析后将自动填充，或手动输入..."
                     value={form.hazard_description}
                     onChange={e => setForm(f => ({ ...f, hazard_description: e.target.value }))} />
                 </FormItem>
 
-                <div className="grid grid-cols-2 gap-x-5 gap-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-3">
                   <FormItem label="隐患分类" required labelWidth="72px">
                     <select className="form-select" value={form.hazard_category}
                       onChange={e => setForm(f => ({ ...f, hazard_category: e.target.value }))}>
                       <option value="">请选择隐患分类</option>
-                      <option value="人的不安全行为">人的不安全行为</option>
-                      <option value="物的危险状态">物的危险状态</option>
-                      <option value="环境的不安全因素">环境的不安全因素</option>
-                      <option value="管理上的缺陷">管理上的缺陷</option>
+                      <option value="仓储管理">仓储管理</option>
+                      <option value="设施监测养护">设施监测养护</option>
+                      <option value="设备运行维修">设备运行维修</option>
+                      <option value="行车组织">行车组织</option>
+                      <option value="客运组织">客运组织</option>
+                      <option value="运行环境">运行环境</option>
+                      <option value="人员管理">人员管理</option>
+                      <option value="施工管理">施工管理</option>
                     </select>
                   </FormItem>
                   <FormItem label="隐患等级" required labelWidth="72px">
                     <select className="form-select" value={form.hazard_level}
                       onChange={e => setForm(f => ({ ...f, hazard_level: e.target.value }))}>
-                      <option value="">一般隐患级</option>
                       <option value="general_i">一般隐患I级</option>
                       <option value="general_ii">一般隐患II级</option>
                     </select>
@@ -424,7 +418,6 @@ export default function NewHazardPage() {
               </div>
             </div>
 
-            {/* 治理信息 */}
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
               <h2 className="text-base font-bold text-gray-800 mb-4 pb-2 border-b border-gray-100">治理信息</h2>
 
@@ -435,7 +428,7 @@ export default function NewHazardPage() {
                     onChange={e => setForm(f => ({ ...f, temporary_measures: e.target.value }))} />
                 </FormItem>
 
-                <div className="grid grid-cols-2 gap-x-5 gap-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-3">
                   <FormItem label="治理责任部门" required labelWidth="84px">
                     <input type="text" className="form-input" placeholder="如：物资后勤中心-物资仓配"
                       value={form.governance_department}
@@ -448,7 +441,7 @@ export default function NewHazardPage() {
                   </FormItem>
                 </div>
 
-                <div className="grid grid-cols-2 gap-x-5 gap-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-3">
                   <FormItem label="治理责任人" required labelWidth="84px">
                     <input type="text" className="form-input" placeholder="责任人姓名"
                       value={form.governance_person}
@@ -471,7 +464,7 @@ export default function NewHazardPage() {
                     <textarea rows={3} className="form-input pr-20 resize-y" placeholder="请输入治理措施，或点击AI优化根据隐患描述自动生成..."
                       value={form.governance_measure}
                       onChange={e => setForm(f => ({ ...f, governance_measure: e.target.value }))} />
-                    <button type="button" onClick={handleAISuggestion} disabled={aiLoading || !form.hazard_description}
+                    <button type="button" onClick={handleAISuggestion} disabled={aiSuggestionLoading || !form.hazard_description}
                       className="absolute bottom-2 right-2 text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-2.5 py-1 rounded border border-blue-200 disabled:opacity-50 whitespace-nowrap transition-colors">
                       AI优化
                     </button>
@@ -480,7 +473,6 @@ export default function NewHazardPage() {
               </div>
             </div>
 
-            {/* 底部操作按钮 */}
             <div className="flex gap-4 pt-2">
               <button type="button" onClick={() => handleSubmit('draft')} disabled={saving}
                 className="flex-1 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50">
@@ -537,11 +529,13 @@ export default function NewHazardPage() {
   );
 }
 
-/** 表单项组件 */
 function FormItem({ label, children, required, labelWidth }: { label: string; children: React.ReactNode; required?: boolean; labelWidth?: string }) {
   return (
-    <div>
-      <label className="block text-sm text-gray-500 mb-1" style={{ minWidth: labelWidth }}>{label}{required && <span className="text-red-500 ml-0.5">*</span>}</label>
+    <div className="space-y-1.5">
+      <label className="block text-xs font-medium text-gray-600">
+        {required && <span className="text-red-500 mr-0.5">*</span>}
+        {label}
+      </label>
       {children}
     </div>
   );
