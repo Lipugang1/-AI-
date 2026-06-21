@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getConnection } from '@/lib/db';
 import { getUserFromRequest, isAdmin } from '@/lib/auth';
 
+function toSnake(str: string): string {
+  return str.replace(/([A-Z])/g, '_$1').toLowerCase();
+}
+
 export async function GET(request: NextRequest) {
+  let conn: any = null;
   try {
     const user = await getUserFromRequest(request);
     if (!user) return NextResponse.json({ success: false, error: '未登录' }, { status: 401 });
@@ -10,10 +15,11 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
-    const conn = await getConnection();
+    conn = await getConnection();
     if (id) {
       const [rows]: any = await conn.execute('SELECT * FROM hazards WHERE id = ?', [id]);
       await conn.end();
+      conn = null;
       if (rows.length === 0) return NextResponse.json({ success: false, error: '未找到' }, { status: 404 });
       return NextResponse.json({ success: true, data: rows[0] });
     }
@@ -27,7 +33,6 @@ export async function GET(request: NextRequest) {
 
     // 部门数据权限：非管理员只能看自己部门的数据
     if (!isAdmin(user) && user.department_id) {
-      // 获取用户的部门名称
       const [deptRows]: any = await conn.execute('SELECT name FROM departments WHERE id = ?', [user.department_id]);
       if (deptRows.length > 0) {
         where += ' AND inspection_department = ?';
@@ -68,6 +73,7 @@ export async function GET(request: NextRequest) {
     );
 
     await conn.end();
+    conn = null;
     return NextResponse.json({
       success: true,
       data: {
@@ -77,17 +83,24 @@ export async function GET(request: NextRequest) {
       }
     });
   } catch (error: any) {
+    if (conn) await conn.end().catch(() => {});
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
+  let conn: any = null;
   try {
     const user = await getUserFromRequest(request);
     if (!user) return NextResponse.json({ success: false, error: '未登录' }, { status: 401 });
 
     const body = await request.json();
-    const conn = await getConnection();
+    const getVal = (key: string, defaultVal: any = undefined): any => {
+      if (body[key] !== undefined) return body[key];
+      if (body[toSnake(key)] !== undefined) return body[toSnake(key)];
+      return defaultVal;
+    };
+    conn = await getConnection();
     const id = `hazard-${Date.now()}`;
 
     await conn.execute(`
@@ -102,18 +115,20 @@ export async function POST(request: NextRequest) {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       id,
-      body.inspection_date, body.inspection_location, body.line || '',
+      getVal('inspectionDate', ''), getVal('inspectionLocation', ''), getVal('line', ''),
       user.inspection_center || '', user.inspection_department || '', user.inspection_team || '', user.inspection_position || '',
       user.name, user.name, user.id,
-      body.hazard_description, body.hazard_category || '', body.hazard_level || 'general_i',
-      body.temporary_measures || '', body.governance_department || '', body.cooperating_department || '',
-      body.governance_person || '', body.governance_measure || '', body.governance_deadline || '',
-      body.status || 'draft', body.images ? JSON.stringify(body.images) : null, user.id
+      getVal('hazardDescription', ''), getVal('hazardCategory', ''), getVal('hazardLevel', 'general_i'),
+      getVal('temporaryMeasures', ''), getVal('governanceDepartment', ''), getVal('cooperatingDepartment', ''),
+      getVal('governancePerson', ''), getVal('governanceMeasure', ''), getVal('governanceDeadline', ''),
+      getVal('status', 'draft'), getVal('images') ? JSON.stringify(getVal('images')) : null, user.id
     ]);
 
     await conn.end();
+    conn = null;
     return NextResponse.json({ success: true, data: { id, ...body } });
   } catch (error: any) {
+    if (conn) await conn.end().catch(() => {});
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

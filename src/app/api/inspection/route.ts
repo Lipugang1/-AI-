@@ -31,7 +31,6 @@ export async function POST(request: NextRequest) {
     : new Date().toISOString().replace('T', ' ').replace('Z', '');
   const vals = [id, body.equipmentId, body.status||'normal', inspectionTime, body.inspectorName||user.name||''];
   
-  // Add optional fields (map camelCase from frontend to snake_case)
   const optionalFieldsMap: Record<string, string> = {
     photoKey: 'photo_key',
     aiStatus: 'ai_status',
@@ -63,5 +62,5 @@ export async function POST(request: NextRequest) {
 
   await query(`INSERT INTO inspection_records (${fields.join(',')}) VALUES (${fields.map(()=>'?').join(',')})`, vals);
   const [r] = await query('SELECT * FROM inspection_records WHERE id=?', [id]) as any[];
-  return NextResponse.json({ success: true, record: r });
+  return NextResponse.json({ success: true, record: toCamelCase(r) });
 }

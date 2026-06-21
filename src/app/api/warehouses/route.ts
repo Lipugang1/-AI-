@@ -19,5 +19,5 @@ export async function POST(request: NextRequest) {
   const id = `wh-${Date.now()}`;
   await query('INSERT INTO warehouses (id,team_id,name) VALUES (?,?,?)', [id, body.teamId, body.name]);
   const [r] = await query('SELECT * FROM warehouses WHERE id=?', [id]) as any[];
-  return NextResponse.json({ warehouse: r });
+  return NextResponse.json({ success: true, warehouse: r });
 }
