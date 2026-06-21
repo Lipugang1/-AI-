@@ -14,7 +14,7 @@ export default function RiskDatabasePage() {
   const [form, setForm] = useState({ serial_number: '', business_module: '', specific_location: '', risk_point_description: '', risk_level: 'general', hazard_inspection_cycle: '', control_responsibility_unit: '' });
 
   useEffect(() => {
-    fetch('/api/auth/me', { credentials: 'include' }).then(r => r.json()).then(d => { if (d.success) setUser(d.user); }).catch(() => {});
+    fetch('/api/auth/me', { credentials: 'include' }).then(r => r.json()).then(d => { if (d.success) setUser(d.user); }).catch(() => router.push('/login'));
   }, []);
 
   const fetchData = async () => {
@@ -35,6 +35,9 @@ export default function RiskDatabasePage() {
   useEffect(() => { fetchData(); }, []);
 
   const handleSubmit = async () => {
+    if (!form.business_module) { alert('请选择业务板块'); return; }
+    if (!form.specific_location.trim()) { alert('请输入具体位置'); return; }
+    if (!form.risk_point_description.trim()) { alert('请输入风险点描述'); return; }
     try {
       const res = await fetch('/api/risk-database', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -53,7 +56,6 @@ export default function RiskDatabasePage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
-      {/* 返回按钮 + 标题 */}
       <div className="mb-6 flex items-center gap-3">
         <button onClick={() => router.push('/dashboard/hazards')}
           className="flex items-center gap-1 text-sm text-gray-500 hover:text-blue-600 transition-colors px-2 py-1 rounded-lg hover:bg-blue-50">
@@ -66,7 +68,6 @@ export default function RiskDatabasePage() {
         </div>
       </div>
 
-      {/* 筛选和操作栏 */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4 flex flex-wrap gap-3 items-center">
         <input className="flex-1 min-w-[200px] border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" 
           placeholder="搜索位置、风险描述..." value={keyword} onChange={e => setKeyword(e.target.value)} />
@@ -80,7 +81,6 @@ export default function RiskDatabasePage() {
         </button>
       </div>
 
-      {/* 数据表格 */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
         {loading ? (
           <div className="py-16 text-center text-gray-400">
@@ -131,7 +131,6 @@ export default function RiskDatabasePage() {
         )}
       </div>
 
-      {/* 新增弹窗 */}
       {showForm && (
         <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => setShowForm(false)}>
           <div className="bg-white rounded-xl w-full max-w-lg shadow-2xl" onClick={e => e.stopPropagation()}>
