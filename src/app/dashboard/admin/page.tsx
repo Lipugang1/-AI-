@@ -5,8 +5,7 @@ import { useState, useEffect } from 'react';
 export default function AdminPage() {
   const [user, setUser] = useState<any>(null);
   const [initError, setInitError] = useState('');
-  const [activeTab, setActiveTab] = useState<'review' | 'users' | 'org'>('review');
-  const [pendingHazards, setPendingHazards] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'users' | 'org'>('users');
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
@@ -24,7 +23,6 @@ export default function AdminPage() {
       })
       .then(d => {
         if (d.success) {
-          // 兼容 data 和 user 两种字段名
           setUser(d.user || d.data);
         } else {
           setInitError(d.error || '获取用户信息失败');
@@ -38,19 +36,8 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!user) return;
-    if (activeTab === 'review') fetchPending();
     if (activeTab === 'users') fetchUsers();
   }, [activeTab, user]);
-
-  const fetchPending = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/hazards?status=draft', { credentials: 'include' });
-      const data = await res.json();
-      setPendingHazards(data.success ? data.data.items || [] : []);
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
-  };
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -63,10 +50,13 @@ export default function AdminPage() {
   };
 
   const handleSaveUser = async () => {
+    if (!userForm.username.trim()) { alert('请输入用户名'); return; }
+    if (!userForm.name.trim()) { alert('请输入姓名'); return; }
+    if (!editingUser && !userForm.password) { alert('请输入密码'); return; }
     try {
       const url = editingUser ? `/api/admin/users/${editingUser.id}` : '/api/admin/users';
       const method = editingUser ? 'PUT' : 'POST';
-      const body = editingUser ? { ...userForm } : { ...userForm };
+      const body = { ...userForm };
       if (editingUser && !userForm.password) delete (body as any).password;
 
       const res = await fetch(url, {
@@ -116,7 +106,6 @@ export default function AdminPage() {
     setShowUserModal(true);
   };
 
-  // 组织架构管理状态
   const [orgTree, setOrgTree] = useState<any[]>([]);
   const [orgLoading, setOrgLoading] = useState(false);
   const [showOrgModal, setShowOrgModal] = useState(false);
@@ -124,14 +113,22 @@ export default function AdminPage() {
   const [orgForm, setOrgForm] = useState({ id: '', name: '', code: '', parentId: '', description: '', sortOrder: 99, teamDeptId: '' });
   const [importResult, setImportResult] = useState<any>(null);
   const [importing, setImporting] = useState(false);
+  const [orgSaveMsg, setOrgSaveMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const fetchOrgTree = async () => {
     setOrgLoading(true);
     try {
       const res = await fetch('/api/departments?action=tree', { credentials: 'include' });
       const data = await res.json();
-      if (data.success) setOrgTree(data.data);
-    } catch (e) { console.error(e); }
+      if (data.success && Array.isArray(data.data)) {
+        setOrgTree(data.data);
+        console.log('orgTree refreshed:', data.data.length, 'roots');
+        return true;
+      }
+      console.error('fetchOrgTree failed:', data);
+      return false;
+    } catch (e) { console.error('fetchOrgTree error:', e); return false; }
     finally { setOrgLoading(false); }
   };
 
@@ -156,42 +153,66 @@ export default function AdminPage() {
   };
 
   const handleSaveOrg = async () => {
-    if (!orgForm.name) { alert('请输入名称'); return; }
+    if (!orgForm.name.trim()) { setOrgSaveMsg({ type: 'error', text: '请输入名称' }); return; }
+    setSaving(true);
+    setOrgSaveMsg(null);
     try {
+      let res: Response;
       if (orgModalType === 'dept') {
         const deptId = orgForm.id || `dept-${Date.now()}`;
-        const body: any = { name: orgForm.name, code: orgForm.code, parentId: orgForm.parentId || null, description: orgForm.description, sortOrder: orgForm.sortOrder };
+        const body: any = { id: deptId, name: orgForm.name.trim(), code: orgForm.code.trim() || '', parentId: orgForm.parentId || null, description: orgForm.description.trim() || '', sortOrder: orgForm.sortOrder || 99 };
         if (orgForm.id) {
-          await fetch(`/api/areas/${deptId}`, { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          res = await fetch(`/api/departments?id=${deptId}`, { method: 'PUT', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         } else {
-          body.id = deptId;
-          await fetch('/api/departments', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          res = await fetch('/api/departments', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         }
       } else {
-        await fetch('/api/teams', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: orgForm.name, departmentId: orgForm.teamDeptId || orgForm.parentId, description: orgForm.description }) });
+        const teamDeptId = orgForm.teamDeptId || orgForm.parentId;
+        if (!teamDeptId) { setOrgSaveMsg({ type: 'error', text: '请选择所属部门' }); setSaving(false); return; }
+        res = await fetch('/api/teams', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: orgForm.name.trim(), departmentId: teamDeptId, description: orgForm.description.trim() }) });
       }
+      const data = await res.json();
+      if (!data.success) {
+        setOrgSaveMsg({ type: 'error', text: data.error || '保存失败' });
+        setSaving(false);
+        return;
+      }
+      setOrgSaveMsg({ type: 'success', text: orgModalType === 'dept' ? '部门保存成功！' : '班组保存成功！' });
       setShowOrgModal(false);
-      fetchOrgTree();
-    } catch (e: any) { alert(e.message); }
+      await fetchOrgTree();
+      setTimeout(() => setOrgSaveMsg(null), 3000);
+    } catch (e: any) {
+      setOrgSaveMsg({ type: 'error', text: e.message || '网络错误' });
+    }
+    finally { setSaving(false); }
   };
 
   const handleDeleteDept = async (deptId: string, name: string) => {
     if (!confirm(`确定删除「${name}」及其所有子部门和班组吗？`)) return;
     try {
-      await fetch(`/api/departments?id=${deptId}`, { method: 'DELETE', credentials: 'include' });
-      fetchOrgTree();
-    } catch (e: any) { alert(e.message); }
+      const res = await fetch(`/api/departments?id=${deptId}`, { method: 'DELETE', credentials: 'include' });
+      const data = await res.json();
+      if (data.success) {
+        fetchOrgTree();
+      } else {
+        alert(data.error || '删除失败');
+      }
+    } catch (e: any) { alert('网络错误：' + (e.message || '请稍后重试')); }
   };
 
   const handleDeleteTeam = async (teamId: string, name: string) => {
     if (!confirm(`确定删除班组「${name}」吗？`)) return;
     try {
-      await fetch(`/api/teams/${teamId}`, { method: 'DELETE', credentials: 'include' });
-      fetchOrgTree();
-    } catch (e: any) { alert(e.message); }
+      const res = await fetch(`/api/teams/${teamId}`, { method: 'DELETE', credentials: 'include' });
+      const data = await res.json();
+      if (data.success) {
+        fetchOrgTree();
+      } else {
+        alert(data.error || '删除失败');
+      }
+    } catch (e: any) { alert('网络错误：' + (e.message || '请稍后重试')); }
   };
 
-  // 初始化中
   if (!user && !initError) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -203,7 +224,6 @@ export default function AdminPage() {
     );
   }
 
-  // 初始化失败
   if (initError) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -226,13 +246,11 @@ export default function AdminPage() {
     <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-800">系统管理后台</h1>
-        <p className="text-sm text-gray-500 mt-1">隐患审核 · 用户管理 · 组织架构</p>
+        <p className="text-sm text-gray-500 mt-1">用户管理 · 组织架构</p>
       </div>
 
-      {/* 标签切换 */}
       <div className="flex gap-1 mb-4 overflow-x-auto">
         {([
-          { key: 'review', label: '待审核隐患' },
           { key: 'users', label: '人员权限管理' },
           { key: 'org', label: '组织架构' },
         ] as const).map(tab => (
@@ -244,65 +262,6 @@ export default function AdminPage() {
         ))}
       </div>
 
-      {/* 待审核 */}
-      {activeTab === 'review' && (
-        <div className="bg-white rounded-b-lg rounded-tr-lg shadow-sm border border-gray-200 overflow-hidden">
-          {loading ? (
-            <div className="py-16 text-center text-gray-400">加载中...</div>
-          ) : pendingHazards.length === 0 ? (
-            <div className="py-16 text-center text-gray-400">暂无待审核隐患</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead><tr className="bg-gray-50 border-b border-gray-200 text-left">
-                  <th className="px-4 py-3">排查地点</th>
-                  <th className="px-4 py-3">隐患描述</th>
-                  <th className="px-4 py-3">等级</th>
-                  <th className="px-4 py-3">上报人</th>
-                  <th className="px-4 py-3">操作</th>
-                </tr></thead>
-                <tbody>
-                  {pendingHazards.map((h: any) => (
-                    <tr key={h.id} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="px-4 py-3">{h.inspection_location || '-'}</td>
-                      <td className="px-4 py-3 max-w-[300px] truncate">{h.hazard_description || '-'}</td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${h.hazard_level === 'general_i' ? 'bg-orange-100 text-orange-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                          {h.hazard_level === 'general_i' ? '一般I级' : '一般II级'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">{h.inspector_name || '-'}</td>
-                      <td className="px-4 py-3">
-                        <button onClick={async () => {
-                          if (!confirm('确定通过审核？')) return;
-                          await fetch(`/api/hazards/${h.id}`, {
-                            method: 'PUT', credentials: 'include',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ status: 'approved' })
-                          });
-                          fetchPending();
-                        }} className="text-green-600 hover:text-green-800 text-xs mr-2">通过</button>
-                        <button onClick={async () => {
-                          const reason = prompt('请输入驳回原因：');
-                          if (!reason) return;
-                          await fetch(`/api/hazards/${h.id}`, {
-                            method: 'PUT', credentials: 'include',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ status: 'rejected', review_comment: reason })
-                          });
-                          fetchPending();
-                        }} className="text-red-600 hover:text-red-800 text-xs">驳回</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 用户管理 */}
       {activeTab === 'users' && (
         <div className="bg-white rounded-b-lg rounded-tr-lg shadow-sm border border-gray-200 p-4">
           <div className="flex justify-between items-center mb-4">
@@ -351,7 +310,6 @@ export default function AdminPage() {
             </table>
           </div>
 
-          {/* 用户编辑/新增弹窗 */}
           {showUserModal && (
             <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => setShowUserModal(false)}>
               <div className="bg-white rounded-xl w-full max-w-lg shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -429,10 +387,8 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* 组织架构管理 */}
       {activeTab === 'org' && (
         <div className="bg-white rounded-b-lg rounded-tr-lg shadow-sm border border-gray-200 p-4">
-          {/* 顶部操作栏 */}
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-4 border-b border-gray-100">
             <div className="flex items-center gap-3">
               <button
@@ -463,7 +419,6 @@ export default function AdminPage() {
             </div>
           </div>
 
-          {/* 导入结果提示 */}
           {importResult && (
             <div className={`mb-4 p-4 rounded-lg text-sm ${importResult.success ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-red-50 border border-red-200 text-red-700'}`}>
               {importResult.success ? (
@@ -484,7 +439,13 @@ export default function AdminPage() {
             </div>
           )}
 
-          {/* 组织架构树 */}
+          {orgSaveMsg && (
+            <div className={`mb-4 p-3 rounded-lg text-sm flex items-center justify-between ${orgSaveMsg.type === 'success' ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-red-50 border border-red-200 text-red-700'}`}>
+              <span>{orgSaveMsg.type === 'success' ? '✅' : '❌'} {orgSaveMsg.text}</span>
+              <button onClick={() => setOrgSaveMsg(null)} className="text-xs underline ml-4">关闭</button>
+            </div>
+          )}
+
           {orgLoading ? (
             <div className="py-16 text-center text-gray-400">加载中...</div>
           ) : (
@@ -502,7 +463,6 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* 组织架构编辑弹窗 */}
       {showOrgModal && (
         <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => setShowOrgModal(false)}>
           <div className="bg-white rounded-xl w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -524,8 +484,13 @@ export default function AdminPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">上级部门</label>
-                    <input className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="上级部门编码（可选）"
-                      value={orgForm.parentId} onChange={e => setOrgForm(f => ({ ...f, parentId: e.target.value }))} />
+                    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      value={orgForm.parentId || ''} onChange={e => setOrgForm(f => ({ ...f, parentId: e.target.value }))}>
+                      <option value="">无（顶级节点）</option>
+                      {flattenOrgNodes(orgTree).map((d: any) => (
+                        <option key={d.id} value={d.id}>{'─'.repeat(Math.max(0, getOrgDepth(orgTree, d.id)))} {d.name}{d.code ? ` [${d.code}]` : ''}</option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">排序</label>
@@ -536,9 +501,14 @@ export default function AdminPage() {
               )}
               {orgModalType === 'team' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">所属部门编码 *</label>
-                  <input className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="如: WCC"
-                    value={orgForm.teamDeptId} onChange={e => setOrgForm(f => ({ ...f, teamDeptId: e.target.value }))} />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">所属部门 *</label>
+                  <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                    value={orgForm.teamDeptId || ''} onChange={e => setOrgForm(f => ({ ...f, teamDeptId: e.target.value }))}>
+                    <option value="">请选择所属部门</option>
+                    {flattenOrgNodes(orgTree).filter((d: any) => (d.children?.length || 0) === 0).map((d: any) => (
+                      <option key={d.id} value={d.id}>{'─'.repeat(Math.max(0, getOrgDepth(orgTree, d.id)))} {d.name}{d.code ? ` [${d.code}]` : ''}</option>
+                    ))}
+                  </select>
                 </div>
               )}
               <div>
@@ -548,8 +518,11 @@ export default function AdminPage() {
               </div>
             </div>
             <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
-              <button onClick={() => setShowOrgModal(false)} className="px-5 py-2 border border-gray-300 rounded-lg text-sm">取消</button>
-              <button onClick={handleSaveOrg} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium">保存</button>
+              <button onClick={() => setShowOrgModal(false)} disabled={saving} className="px-5 py-2 border border-gray-300 rounded-lg text-sm disabled:opacity-50">取消</button>
+              <button onClick={handleSaveOrg} disabled={saving} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium disabled:opacity-50 flex items-center gap-2">
+                {saving && <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white"></div>}
+                {saving ? '保存中...' : '保存'}
+              </button>
             </div>
           </div>
         </div>
@@ -558,14 +531,38 @@ export default function AdminPage() {
   );
 }
 
-// ========== 组织架构树节点渲染 ==========
+function flattenOrgNodes(nodes: any[]): any[] {
+  const result: any[] = [];
+  for (const node of nodes) {
+    result.push(node);
+    if (node.children?.length) result.push(...flattenOrgNodes(node.children));
+  }
+  return result;
+}
+
+function getOrgDepth(nodes: any[], targetId: string, depth = 0): number {
+  for (const node of nodes) {
+    if (node.id === targetId) return depth;
+    if (node.children?.length) {
+      const d = getOrgDepth(node.children, targetId, depth + 1);
+      if (d >= 0) return d;
+    }
+  }
+  return -1;
+}
+
 function OrgTreeNode({ node, depth, onAddDept, onAddTeam, onDeleteDept, onDeleteTeam }: {
   node: any; depth: number;
   onAddDept: (parentId: string) => void; onAddTeam: (deptId: string) => void;
   onDeleteDept: (id: string, name: string) => void; onDeleteTeam: (id: string, name: string) => void;
 }) {
-  const [expanded, setExpanded] = useState(depth < 2 || node.children?.length > 0);
+  const [expanded, setExpanded] = useState(depth < 2 || (node.children?.length || 0) > 0 || (node.teams?.length || 0) > 0);
   const hasChildren = (node.children?.length || 0) > 0 || (node.teams?.length || 0) > 0;
+
+  const childCount = (node.children?.length || 0) + (node.teams?.length || 0);
+  useEffect(() => {
+    if (childCount > 0) setExpanded(true);
+  }, [childCount]);
 
   return (
     <div>
@@ -578,33 +575,25 @@ function OrgTreeNode({ node, depth, onAddDept, onAddTeam, onDeleteDept, onDelete
             </svg>
           </button>
         ) : <span className="w-4"></span>}
-        
-        {/* 图标 */}
         <span className="text-lg">
           {depth === 0 ? '🏢' : depth === 1 ? '🏭' : '📂'}
         </span>
-
-        {/* 名称 */}
         <span className={`font-medium ${depth === 0 ? 'text-gray-900' : 'text-gray-700'}`}>{node.name}</span>
         {node.code && <span className="text-xs text-gray-400 font-mono">[{node.code}]</span>}
-        
-        {/* 操作按钮 */}
-        <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={() => onAddDept(node.id)} className="text-xs text-blue-600 hover:text-blue-800 px-1" title="添加子部门">+部门</button>
-          <button onClick={() => onAddTeam(node.id)} className="text-xs text-green-600 hover:text-green-800 px-1" title="添加班组">+班组</button>
+        <div className="ml-auto flex items-center gap-1">
+          <button type="button" onClick={() => onAddDept(node.id)} className="text-xs text-blue-600 hover:text-blue-800 hover:underline px-1" title="添加子部门">+部门</button>
+          <button type="button" onClick={() => onAddTeam(node.id)} className="text-xs text-green-600 hover:text-green-800 hover:underline px-1" title="添加班组">+班组</button>
           {depth > 0 && (
-            <button onClick={() => onDeleteDept(node.id, node.name)} className="text-xs text-red-500 hover:text-red-700 px-1" title="删除">删除</button>
+            <button type="button" onClick={() => onDeleteDept(node.id, node.name)} className="text-xs text-red-400 hover:text-red-600 hover:underline px-1" title="删除">删除</button>
           )}
         </div>
       </div>
 
-      {/* 子部门 */}
       {expanded && node.children?.map((child: any) => (
         <OrgTreeNode key={child.id} node={child} depth={depth + 1}
           onAddDept={onAddDept} onAddTeam={onAddTeam} onDeleteDept={onDeleteDept} onDeleteTeam={onDeleteTeam} />
       ))}
 
-      {/* 班组列表 */}
       {expanded && node.teams?.length > 0 && (
         <div style={{ marginLeft: `${(depth + 1) * 24}px` }}>
           {node.teams.map((team: any) => (
@@ -613,8 +602,8 @@ function OrgTreeNode({ node, depth, onAddDept, onAddTeam, onDeleteDept, onDelete
               <span className="text-base">👥</span>
               <span className="text-sm text-gray-600">{team.name}</span>
               <span className="text-xs text-yellow-500 ml-1">班组</span>
-              <button onClick={() => onDeleteTeam(team.id, team.name)}
-                className="ml-auto text-xs text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button type="button" onClick={() => onDeleteTeam(team.id, team.name)}
+                className="ml-auto text-xs text-red-400 hover:text-red-600 hover:underline opacity-0 group-hover:opacity-100 transition-opacity">
                 删除
               </button>
             </div>
