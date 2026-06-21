@@ -72,7 +72,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       'hazard_description', 'hazard_category', 'hazard_level',
       'temporary_measures', 'governance_department', 'cooperating_department',
       'governance_person', 'governance_measure', 'governance_deadline',
-      'governance_result', 'governance_details', 'reviewer_name', 'status',
+      'governance_result', 'governance_details', 'reviewer_name', 'review_comment', 'status',
       'images'
     ];
 
@@ -107,7 +107,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     await conn.execute(`UPDATE hazards SET ${fields.join(', ')}, updated_at = NOW() WHERE id = ?`, values);
 
     // 3. 记录操作日志
-    // 判断操作类型：是否涉及治理字段
     const governanceFields = ['governance_result', 'governance_details', 'reviewer_name',
       'governance_measure', 'governance_person', 'governance_department',
       'governance_deadline', 'cooperating_department', 'status'];
@@ -115,7 +114,6 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const isGovernance = Object.keys(changes).some(f => governanceFields.includes(f));
     const action = isGovernance ? '隐患治理更新' : '隐患信息修改';
 
-    // 格式化变更详情
     const changeList = Object.entries(changes).map(([field, diff]) => ({
       field,
       label: getFieldLabel(field),
@@ -157,7 +155,6 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
     const { id } = await params;
 
-    // Record deletion log before deleting
     await conn.execute(
       `INSERT INTO operation_logs (id, user_id, action, module, details, ip_address, created_at)
        VALUES (?, ?, ?, ?, ?, ?, NOW())`,
@@ -201,6 +198,7 @@ function getFieldLabel(field: string): string {
     governance_result: '治理结果',
     governance_details: '具体治理情况',
     reviewer_name: '复查人',
+    review_comment: '审核意见',
     status: '状态',
     images: '照片',
   };

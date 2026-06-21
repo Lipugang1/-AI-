@@ -129,9 +129,31 @@ export async function POST(request: NextRequest) {
   if (!body.name) return NextResponse.json({ error: 'name required' }, { status: 400 });
   const id = body.id || `dept-${Date.now()}`;
   await query('INSERT INTO departments (id,name,code,parent_id,description,sort_order) VALUES (?,?,?,?,?,?)',
-    [id, body.name, body.code || '', body.parentId || null, body.description || '', body.sortOrder || 99]);
+    [id, body.name, body.code || null, body.parentId || null, body.description || '', body.sortOrder || 99]);
   const [r] = await query('SELECT * FROM departments WHERE id=?', [id]) as any[];
-  return NextResponse.json({ success: true, department: r });
+  return NextResponse.json({ success: true, department: r[0] || r });
+}
+
+export async function PUT(request: NextRequest) {
+  const user = await getUserFromRequest(request);
+  if (!user || user.role !== 'admin') return NextResponse.json({ error: '无权限' }, { status: 403 });
+  const { searchParams } = new URL(request.url);
+  const id = searchParams.get('id');
+  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+  const body = await request.json();
+  const fields: string[] = [];
+  const values: any[] = [];
+  if (body.name !== undefined) { fields.push('name=?'); values.push(body.name); }
+  if (body.code !== undefined) { fields.push('code=?'); values.push(body.code || null); }
+  if (body.parentId !== undefined) { fields.push('parent_id=?'); values.push(body.parentId); }
+  if (body.description !== undefined) { fields.push('description=?'); values.push(body.description); }
+  if (body.sortOrder !== undefined) { fields.push('sort_order=?'); values.push(body.sortOrder); }
+  if (body.isActive !== undefined) { fields.push('is_active=?'); values.push(body.isActive ? 1 : 0); }
+  if (fields.length === 0) return NextResponse.json({ error: 'no fields to update' }, { status: 400 });
+  values.push(id);
+  await query(`UPDATE departments SET ${fields.join(',')} WHERE id=?`, values);
+  const [r] = await query('SELECT * FROM departments WHERE id=?', [id]) as any[];
+  return NextResponse.json({ success: true, department: r[0] || r });
 }
 
 export async function DELETE(request: NextRequest) {

@@ -18,6 +18,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   return NextResponse.json({ equipment: r });
 }
 export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await query('DELETE FROM fire_equipment WHERE id=?', [await params.then(p => p.id)]);
+  const { id } = await params;
+  await query('DELETE FROM fire_equipment WHERE id=?', [id]);
   return NextResponse.json({ success: true });
 }

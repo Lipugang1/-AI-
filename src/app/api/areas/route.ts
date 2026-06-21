@@ -19,5 +19,5 @@ export async function POST(request: NextRequest) {
   const id = `area-${Date.now()}`;
   await query('INSERT INTO areas (id,warehouse_id,name) VALUES (?,?,?)', [id, body.warehouseId, body.name]);
   const [r] = await query('SELECT * FROM areas WHERE id=?', [id]) as any[];
-  return NextResponse.json({ area: r });
+  return NextResponse.json({ success: true, area: r });
 }
