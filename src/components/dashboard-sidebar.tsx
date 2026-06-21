@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import type { User } from '@/lib/auth';
 
@@ -95,6 +96,9 @@ interface DashboardSidebarProps {
 export function DashboardSidebar({ user, onNavigate }: DashboardSidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profileForm, setProfileForm] = useState({ name: '', password: '', confirmPassword: '' });
+  const [profileLoading, setProfileLoading] = useState(false);
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
@@ -106,6 +110,34 @@ export function DashboardSidebar({ user, onNavigate }: DashboardSidebarProps) {
     onNavigate?.();
   };
 
+  const openProfileModal = () => {
+    setProfileForm({ name: user.name || '', password: '', confirmPassword: '' });
+    setShowProfileModal(true);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!profileForm.name.trim()) { alert('请输入姓名'); return; }
+    if (profileForm.password && profileForm.password !== profileForm.confirmPassword) { alert('两次密码不一致'); return; }
+    setProfileLoading(true);
+    try {
+      const body: any = { name: profileForm.name.trim() };
+      if (profileForm.password) body.password = profileForm.password;
+      const res = await fetch(`/api/admin/users/${user.id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('个人信息已更新，请重新登录生效');
+        setShowProfileModal(false);
+        handleLogout();
+      } else {
+        alert(data.error || '更新失败');
+      }
+    } catch (e: any) { alert(e.message); }
+    finally { setProfileLoading(false); }
+  };
+
   const isActive = (href: string) => pathname === href || pathname?.startsWith(href + '/');
 
   return (
@@ -114,11 +146,11 @@ export function DashboardSidebar({ user, onNavigate }: DashboardSidebarProps) {
       <div className="flex h-16 items-center justify-between border-b border-gray-800/50 px-5">
         <div className="flex items-center gap-2.5">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600">
-            <svg className="h-4.5 w-4.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg className="size-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
             </svg>
           </div>
-          <span className="text-base font-bold text-white">三合一</span>
+          <span className="text-base font-bold text-white">安全管理</span>
         </div>
       </div>
 
@@ -195,13 +227,17 @@ export function DashboardSidebar({ user, onNavigate }: DashboardSidebarProps) {
       {/* User section */}
       <div className="border-t border-gray-800/50 p-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <div
+            className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+            onClick={openProfileModal}
+            title="点击编辑个人信息"
+          >
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-sm font-bold text-white">
               {(user.name || '?')[0].toUpperCase()}
             </div>
             <div>
               <p className="text-sm font-medium text-white leading-tight">{user.name}</p>
-              <p className="text-xs text-gray-500">{user.role}</p>
+              <p className="text-xs text-gray-500">{user.role === 'admin' ? '管理员' : user.role === 'reviewer' ? '审核员' : '检查员'}</p>
             </div>
           </div>
           <button
@@ -212,6 +248,45 @@ export function DashboardSidebar({ user, onNavigate }: DashboardSidebarProps) {
           </button>
         </div>
       </div>
+
+      {/* 个人信息编辑弹窗 */}
+      {showProfileModal && (
+        <div className="fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4" onClick={() => setShowProfileModal(false)}>
+          <div className="bg-white rounded-xl w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="font-semibold text-lg text-gray-800">编辑个人信息</h3>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">用户名</label>
+                <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-500" disabled value={user.username} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">姓名 <span className="text-red-500">*</span></label>
+                <input className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="请输入姓名"
+                  value={profileForm.name} onChange={e => setProfileForm(f => ({ ...f, name: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">新密码</label>
+                <input type="password" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="留空不修改"
+                  value={profileForm.password} onChange={e => setProfileForm(f => ({ ...f, password: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">确认密码</label>
+                <input type="password" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="再次输入新密码"
+                  value={profileForm.confirmPassword} onChange={e => setProfileForm(f => ({ ...f, confirmPassword: e.target.value }))} />
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+              <button onClick={() => setShowProfileModal(false)} className="px-5 py-2 border border-gray-300 rounded-lg text-sm">取消</button>
+              <button onClick={handleSaveProfile} disabled={profileLoading}
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg text-sm font-medium">
+                {profileLoading ? '保存中...' : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

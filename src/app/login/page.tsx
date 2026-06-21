@@ -50,10 +50,10 @@ export default function LoginPage() {
           </div>
           
           <h1 className="text-3xl font-bold tracking-tight text-white">
-            三合一管理系统
+            安全生产AI智能管理系统
           </h1>
           <p className="mt-2.5 text-sm font-normal text-gray-400 tracking-wide">
-            物资后勤中心 · 统一管理平台
+            青岛地铁运营有限公司 · 统一管理平台
           </p>
         </div>
 
@@ -68,7 +68,7 @@ export default function LoginPage() {
         {/* Footer */}
         <div className="mt-8 text-center">
           <p className="text-xs text-gray-600">
-            © 2024 物资后勤中心 · 三合一管理系统 v1.0
+            © 2026 青岛地铁运营有限公司 · 安全生产AI智能管理系统 v1.0
           </p>
         </div>
       </div>

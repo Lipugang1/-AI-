@@ -63,7 +63,6 @@ export function useVoiceChat(roomId: string): VoiceChatState {
     await ctx.resume();
     audioContextRef.current = ctx;
     
-    // 创建一个静音的振荡器来解锁音频
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     gain.gain.value = 0.001;
@@ -90,53 +89,42 @@ export function useVoiceChat(roomId: string): VoiceChatState {
       return;
     }
 
-    // 初始化播放器状态
     if (!audioPlayersRef.current.has(userId)) {
       audioPlayersRef.current.set(userId, { nextPlayTime: 0 });
     }
     const player = audioPlayersRef.current.get(userId)!;
     
-    // 转换 Int16 PCM 到 Float32
     const floatData = new Float32Array(pcmData.length);
     for (let i = 0; i < pcmData.length; i++) {
       floatData[i] = pcmData[i] / 32768;
     }
     
-    // 创建音频缓冲
     const audioBuffer = ctx.createBuffer(1, floatData.length, SAMPLE_RATE);
     audioBuffer.getChannelData(0).set(floatData);
     
-    // 创建源节点
     const source = ctx.createBufferSource();
     source.buffer = audioBuffer;
     source.connect(ctx.destination);
     
-    // 计算播放时间 - 关键优化：控制延迟
     const now = ctx.currentTime;
-    const maxLatency = 0.15; // 最大允许延迟 150ms
+    const maxLatency = 0.15;
     const bufferDuration = audioBuffer.duration;
     
     if (player.nextPlayTime < now) {
-      // 如果之前的播放时间已过期
       player.nextPlayTime = now;
     } else if (player.nextPlayTime - now > maxLatency) {
-      // 如果延迟超过阈值，跳过积压音频，重置为当前时间
-      // 这样可以保持低延迟，代价是可能丢失一些音频
       console.log('[Voice] Latency too high, resetting. Delay:', (player.nextPlayTime - now).toFixed(3), 's');
       player.nextPlayTime = now;
     }
     
-    // 立即播放（尽可能快）
     source.start(player.nextPlayTime);
     player.nextPlayTime += bufferDuration;
     
-    // 防抖处理 speaking 状态
     const existingTimer = speakingTimersRef.current.get(userId);
     if (existingTimer) {
       clearTimeout(existingTimer);
     }
     
-    // 设置 speaking 为 true（只在状态变化时更新）
     setRemoteUsers(prev => {
       const user = prev.find(u => u.userId === userId);
       if (user && !user.speaking) {
@@ -145,7 +133,6 @@ export function useVoiceChat(roomId: string): VoiceChatState {
       return prev;
     });
     
-    // 1秒后清除 speaking 标志（停止说话后）
     const timer = setTimeout(() => {
       setRemoteUsers(prev => prev.map(u => 
         u.userId === userId ? { ...u, speaking: false } : u
@@ -166,10 +153,8 @@ export function useVoiceChat(roomId: string): VoiceChatState {
       
       console.log('[Voice] Joining room as', userName, userId);
       
-      // 初始化音频上下文
       await initAudioContext();
       
-      // 获取麦克风
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           sampleRate: SAMPLE_RATE,
@@ -184,13 +169,10 @@ export function useVoiceChat(roomId: string): VoiceChatState {
         localStreamRef.current = stream;
         console.log('[Voice] Got microphone access');
         
-        // 获取麦克风的 AudioContext
         const micCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
         await micCtx.resume();
         const source = micCtx.createMediaStreamSource(stream);
         
-        // 使用 ScriptProcessor（兼容性好）或 AudioWorklet
-        // 这里用 ScriptProcessorNode 简化实现
         const processor = micCtx.createScriptProcessor(BUFFER_SIZE, 1, 1);
         
         processor.onaudioprocess = (e) => {
@@ -199,26 +181,22 @@ export function useVoiceChat(roomId: string): VoiceChatState {
           
           const inputData = e.inputBuffer.getChannelData(0);
           
-          // 转换 Float32 到 Int16 PCM
           const pcmData = new Int16Array(inputData.length);
           for (let i = 0; i < inputData.length; i++) {
             const s = Math.max(-1, Math.min(1, inputData[i]));
             pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
           }
           
-          // 发送二进制数据
           wsRef.current.send(pcmData.buffer);
         };
         
         source.connect(processor);
         processor.connect(micCtx.destination);
         
-        // 保存引用用于清理
         micContextRef.current = { processor, source, ctx: micCtx };
         
-        // 连接 WebSocket
-        const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const ws = new WebSocket(`${protocol}//${location.host}/ws/voice`);
+        const wsPort = process.env.NEXT_PUBLIC_VOICE_WS_PORT || '4000';
+        const ws = new WebSocket(`ws://${location.hostname}:${wsPort}`);
         ws.binaryType = 'arraybuffer';
         wsRef.current = ws;
       
@@ -232,7 +210,6 @@ export function useVoiceChat(roomId: string): VoiceChatState {
         
         setConnected(true);
         
-        // 心跳
         heartbeatRef.current = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: 'ping' }));
@@ -241,16 +218,13 @@ export function useVoiceChat(roomId: string): VoiceChatState {
       };
       
       ws.onmessage = async (e) => {
-        // 二进制消息 = 音频数据
         if (e.data instanceof ArrayBuffer) {
           try {
             const buffer = Buffer.from(e.data);
             
-            // 解析发送者ID
             const userIdLen = buffer.readUInt8(0);
             const senderId = buffer.toString('utf-8', 1, 1 + userIdLen);
             
-            // 复制 PCM 数据到新的 ArrayBuffer（确保对齐）
             const pcmStart = 1 + userIdLen;
             const pcmLength = buffer.byteLength - pcmStart;
             const pcmBuffer = new ArrayBuffer(pcmLength);
@@ -259,7 +233,6 @@ export function useVoiceChat(roomId: string): VoiceChatState {
             
             console.log('[Voice] Received audio from', senderId, 'samples:', pcmData.length, 'bytes:', buffer.byteLength);
             
-            // 确保音频上下文运行
             if (audioContextRef.current?.state === 'suspended') {
               await audioContextRef.current.resume();
             }
@@ -271,7 +244,6 @@ export function useVoiceChat(roomId: string): VoiceChatState {
           return;
         }
         
-        // 文本消息 = 信令
         try {
           const msg: WsMessage = JSON.parse(e.data);
           if (msg.type === 'pong') return;
@@ -335,7 +307,6 @@ export function useVoiceChat(roomId: string): VoiceChatState {
           clearInterval(heartbeatRef.current);
           heartbeatRef.current = null;
         }
-        // 清理麦克风上下文
         if (micContextRef.current) {
           micContextRef.current.processor.disconnect();
           micContextRef.current.source.disconnect();
@@ -354,7 +325,6 @@ export function useVoiceChat(roomId: string): VoiceChatState {
     } catch (err: unknown) {
       console.error('[Voice] Failed:', err);
       
-      // 根据错误类型提供更具体的提示
       if (err instanceof DOMException) {
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
           setError('麦克风权限被拒绝，请在浏览器地址栏左侧点击图标允许麦克风访问');
@@ -377,7 +347,6 @@ export function useVoiceChat(roomId: string): VoiceChatState {
     }
   }, [roomId, initAudioContext, playPcmAudio]);
 
-  // 离开房间
   const leaveRoom = useCallback(() => {
     console.log('[Voice] Leaving room');
     
@@ -387,8 +356,18 @@ export function useVoiceChat(roomId: string): VoiceChatState {
     }
     
     if (wsRef.current) {
-      wsRef.current.send(JSON.stringify({ type: 'leave' }));
-      wsRef.current.close();
+      if (wsRef.current.readyState === WebSocket.OPEN) {
+        try {
+          wsRef.current.send(JSON.stringify({ type: 'leave' }));
+        } catch (e) {
+          console.warn('[Voice] Could not send leave message:', e);
+        }
+      }
+      try {
+        wsRef.current.close();
+      } catch (e) {
+        console.warn('[Voice] Could not close websocket:', e);
+      }
       wsRef.current = null;
     }
     
@@ -397,7 +376,6 @@ export function useVoiceChat(roomId: string): VoiceChatState {
       localStreamRef.current = null;
     }
     
-    // 清理麦克风上下文
     if (micContextRef.current) {
       micContextRef.current.processor.disconnect();
       micContextRef.current.source.disconnect();
@@ -407,7 +385,6 @@ export function useVoiceChat(roomId: string): VoiceChatState {
       micContextRef.current = null;
     }
     
-    // 清理播放音频上下文
     if (audioContextRef.current) {
       if (audioContextRef.current.state !== 'closed') {
         audioContextRef.current.close();
@@ -418,7 +395,6 @@ export function useVoiceChat(roomId: string): VoiceChatState {
     audioPlayersRef.current.clear();
     audioBuffersRef.current.clear();
     
-    // 清理 speaking 定时器
     speakingTimersRef.current.forEach(timer => clearTimeout(timer));
     speakingTimersRef.current.clear();
     
@@ -428,13 +404,11 @@ export function useVoiceChat(roomId: string): VoiceChatState {
     mutedRef.current = false;
   }, []);
 
-  // 切换静音
   const toggleMute = useCallback(() => {
     const newMuted = !muted;
     setMuted(newMuted);
     mutedRef.current = newMuted;
     
-    // 静音本地音频轨道
     if (localStreamRef.current) {
       localStreamRef.current.getAudioTracks().forEach(track => {
         track.enabled = !newMuted;
@@ -448,7 +422,6 @@ export function useVoiceChat(roomId: string): VoiceChatState {
     }
   }, [muted]);
 
-  // 清理
   useEffect(() => {
     return () => {
       if (heartbeatRef.current) clearInterval(heartbeatRef.current);
@@ -468,7 +441,6 @@ export function useVoiceChat(roomId: string): VoiceChatState {
         }
       }
       if (wsRef.current) wsRef.current.close();
-      // 清理 speaking 定时器
       speakingTimersRef.current.forEach(timer => clearTimeout(timer));
     };
   }, []);
